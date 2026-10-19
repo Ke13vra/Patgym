@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Muestra de iconos — valida el estilo (v2)</title>
+<style>
+  :root{
+    --bg:#0a0a0b; --card:#15151a; --card2:#1f1f26; --line:#33333d;
+    --tx:#f3f0ee; --tx2:#b9b3ae; --tx3:#817b76;
+    --or:#ef4444; --ok:#f5c518;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--tx); overflow-x:hidden;
+    font:16px/1.45 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+    padding:18px 14px 40px;
+  }
+  h1{margin:0 0 4px; font-size:20px; font-weight:800}
+  p.sub{margin:0 0 20px; color:var(--tx2); font-size:14px}
+
+  /* ---------- rejilla de muestras (igual que una tarjeta de ejercicio real) ---------- */
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(104px,1fr)); gap:14px; max-width:560px}
+  .card{
+    background:var(--card); border:1px solid var(--line); border-radius:14px;
+    padding:10px; display:flex; flex-direction:column; align-items:center; gap:8px;
+    cursor:pointer; -webkit-user-select:none; user-select:none;
+  }
+  .card:hover{border-color:var(--or)}
+  .card:focus-visible{outline:2px solid var(--ok); outline-offset:2px}
+  .thumb{width:60px; height:60px; flex:0 0 60px; background:var(--card2); border-radius:10px; padding:3px}
+  .icon{width:100%; height:100%; display:block}
+  .icon.big{width:100%; height:100%}
+  .cardname{font-size:12.5px; font-weight:700; text-align:center; line-height:1.25}
+
+  /* ---------- trazos del pictograma (misma paleta que index.html) ---------- */
+  .fig{stroke:#ece7e2; stroke-width:4.4; fill:none; stroke-linecap:round; stroke-linejoin:round}
+  .body{stroke:#ece7e2; fill:#ece7e2; stroke-linecap:round; stroke-linejoin:round}
+  .head{fill:#ece7e2}
+  .hand{fill:#ece7e2; stroke:#ece7e2}
+  .grip{stroke:var(--bg); stroke-width:1.6; fill:none; stroke-linecap:round}
+  .eq{stroke:var(--or); stroke-width:4.4; fill:none; stroke-linecap:round; stroke-linejoin:round}
+  .eqc{stroke:var(--or); stroke-width:4.4; fill:none}
+  .pl{stroke:var(--or); stroke-width:9; fill:none; stroke-linecap:round}
+  .plThin{stroke:var(--or); stroke-width:5.5; fill:none; stroke-linecap:round}
+  .frame{stroke:#8a8278; stroke-width:4.2; fill:none; stroke-linecap:round}
+  .dash{stroke:var(--or); stroke-width:3; fill:none; stroke-dasharray:6 5; stroke-linecap:round}
+  .acc{stroke:var(--ok); stroke-width:3; fill:none; stroke-linecap:round}
+  .accf{fill:var(--ok)}
+  .topFloor{stroke:#8a8278; stroke-width:2.4; fill:none; stroke-dasharray:3 4}
+
+  /* ---------- diálogo ampliado: hasta 4 vistas ---------- */
+  dialog{
+    background:var(--card); color:var(--tx); border:1px solid var(--line); border-radius:16px;
+    padding:18px; max-width:600px; width:92vw;
+  }
+  dialog::backdrop{background:rgba(0,0,0,.6)}
+  .dlgHead{display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; margin-bottom:4px}
+  .dlgHead h2{font-size:17px; margin:0}
+  .dlgEq{font-size:12.5px; color:var(--or); font-weight:700}
+  .views{display:grid; grid-template-columns:repeat(var(--n,3),1fr); gap:10px; margin-top:14px}
+  .viewBox{display:flex; flex-direction:column; align-items:center; gap:6px}
+  .viewFrame{width:100%; aspect-ratio:1; background:var(--card2); border-radius:12px; padding:6px; position:relative}
+  .viewFrame.phase::before{
+    content:attr(data-tag); position:absolute; top:5px; left:6px; font-size:9.5px; font-weight:800;
+    color:var(--ok); letter-spacing:.3px;
+  }
+  .viewLabel{font-size:11.5px; color:var(--tx2); font-weight:700; letter-spacing:.2px}
+  .legend{margin-top:14px; font-size:13px; color:var(--tx2); border-top:1px solid var(--line); padding-top:10px}
+  .legend b{color:var(--tx)}
+  .row{margin-top:14px; display:flex; justify-content:flex-end}
+  .btn{
+    padding:9px 16px; border-radius:10px; border:1px solid var(--line); background:var(--card2);
+    color:var(--tx); font-weight:700; font-size:13.5px; cursor:pointer;
+  }
+  .btn:hover{border-color:var(--or)}
+  @media (max-width:480px){
+    .views{grid-template-columns:repeat(2,1fr); }
+  }
+</style>
+</head>
+<body>
+
+<h1>Muestra de iconos — valida el estilo (v2)</h1>
+<p class="sub">Prototipo visual aislado (2ª iteración). No afecta a la app real: sirve solo para validar el estilo nuevo de pictogramas antes de aplicarlo.</p>
+
+<div class="grid" id="grid"></div>
+
+<dialog id="dExo">
+  <div class="dlgHead">
+    <h2 id="exoName"></h2>
+    <span class="dlgEq" id="exoEq"></span>
+  </div>
+  <div class="views" id="exoViews"></div>
+  <div class="legend" id="exoLegend"></div>
+  <div class="row"><button type="button" class="btn" id="exoClose">Cerrar</button></div>
+</dialog>
+
+<script>
+"use strict";
+
+/* ============================= pictogramas (motor copiado de index.html) ============================= */
+const pp=(x1,y1,x2,y2)=>{const dx=x2-x1,dy=y2-y1,L=Math.hypot(dx,dy)||1;return[-dy/L,dx/L];};
+const ln=(c,x1,y1,x2,y2)=>`<line class="${c}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+const pl=(c,p)=>`<polyline class="${c}" points="${p}"/>`;
+const pa=(c,d)=>`<path class="${c}" d="${d}"/>`;
+const hd=(x,y,r=7)=>`<circle class="head" cx="${x}" cy="${y}" r="${r}"/>`;
+const fl=(y=90)=>ln('frame',6,y,94,y);
+function db(x1,y1,x2,y2,p=13){const[px,py]=pp(x1,y1,x2,y2),h=p/2;let s=ln('eq',x1,y1,x2,y2);
+  for(const[ex,ey]of[[x1,y1],[x2,y2]])s+=ln('pl',(ex-px*h).toFixed(1),(ey-py*h).toFixed(1),(ex+px*h).toFixed(1),(ey+py*h).toFixed(1));return s;}
+function bb(x1,y1,x2,y2,p=16,i=.12){const[px,py]=pp(x1,y1,x2,y2),h=p/2;let s=ln('eq',x1,y1,x2,y2);
+  for(const t of[i,1-i]){const ex=x1+(x2-x1)*t,ey=y1+(y2-y1)*t;
+    s+=ln('pl',(ex-px*h).toFixed(1),(ey-py*h).toFixed(1),(ex+px*h).toFixed(1),(ey+py*h).toFixed(1));}return s;}
+function ar(x1,y1,x2,y2,s=5){const a=Math.atan2(y2-y1,x2-x1),a1=a+2.618,a2=a-2.618;
+  return ln('eq',x1,y1,x2,y2)+pl('eq',`${(x2+s*Math.cos(a1)).toFixed(1)},${(y2+s*Math.sin(a1)).toFixed(1)} ${x2},${y2} ${(x2+s*Math.cos(a2)).toFixed(1)},${(y2+s*Math.sin(a2)).toFixed(1)}`);}
+const mv=(c,s)=>`<g class="mv ${c}">${s}</g>`;
+
+/* ===== siluetas humanas con volumen (helpers paramétricos) ===== */
+const rad=d=>(d-90)*Math.PI/180;
+const cl=v=>Math.max(6,Math.min(94,v));
+const tip=(x,y,a,l)=>[cl(+(x+l*Math.cos(rad(a))).toFixed(1)), cl(+(y+l*Math.sin(rad(a))).toFixed(1))];
+const limb=(x1,y1,x2,y2,w=7)=>`<path class="body" d="M${x1} ${y1}L${x2} ${y2}" stroke-width="${w}"/>`;
+const bhead=(x,y,r=7)=>`<ellipse class="head" cx="${x}" cy="${y}" rx="${r}" ry="${(r*1.12).toFixed(1)}"/>`;
+const btorso=(sx,sy,hx,hy,w=15)=>`<path class="body" d="M${sx} ${sy}L${hx} ${hy}" stroke-width="${w}"/>`;
+const bhip=(x,y,w=19,t=9)=>`<path class="body" d="M${cl(x-w/2).toFixed(1)} ${y}L${cl(x+w/2).toFixed(1)} ${y}" stroke-width="${t}"/>`;
+function arm(sx,sy,shAng,elAng,upper,fore,w,gearFn){
+  upper=upper||15; fore=fore||14; w=w||6;
+  const [ex,ey]=tip(sx,sy,shAng,upper);
+  const [hx,hy]=tip(ex,ey,shAng+elAng,fore);
+  const base=limb(sx,sy,ex,ey,w)+limb(ex,ey,hx,hy,w)+`<circle class="body" cx="${hx}" cy="${hy}" r="${(w/2).toFixed(1)}"/>`;
+  const gear=gearFn?gearFn(hx,hy,ex,ey):'';
+  return {svg:base+gear, hand:[hx,hy], elbow:[ex,ey]};
+}
+function leg(hx,hy,hipAng,kneeAng,thigh,shin,w,gearFn){
+  thigh=thigh||18; shin=shin||17; w=w||8;
+  const [kx,ky]=tip(hx,hy,hipAng,thigh);
+  const [fx,fy]=tip(kx,ky,hipAng+kneeAng,shin);
+  const base=limb(hx,hy,kx,ky,w)+limb(kx,ky,fx,fy,w);
+  const gear=gearFn?gearFn(fx,fy,kx,ky):'';
+  return {svg:base+gear, foot:[fx,fy], knee:[kx,ky]};
+}
+
+/* equipo sostenido en las manos (reutilizado tal cual) */
+const dbHand=(hx,hy)=>db(hx-6,hy,hx+6,hy,10);
+const barHands=(hL,hR)=>bb(hL[0],hL[1],hR[0],hR[1]);
+
+/* ========================================================================
+   HELPERS para el estilo articulado: mano con agarre explícito (prono/supino)
+   y una barra con discos (equipo siempre en rojo var(--or))
+   ======================================================================== */
+
+/* mano con dedos envolviendo la barra: un pequeño "gancho" perpendicular
+   al eje de la barra, para que el agarre (prono/supino) se lea con claridad */
+function gripHand(x,y,barAng,prone){
+  const a = barAng*Math.PI/180;
+  const dx=Math.cos(a), dy=Math.sin(a);
+  const nx=-dy, ny=dx;
+  const sign = prone ? 1 : -1;
+  const kx=(x+nx*5*sign).toFixed(1), ky=(y+ny*5*sign).toFixed(1);
+  return `<circle class="hand" cx="${x}" cy="${y}" r="4.1"/>`
+    + `<path class="grip" d="M${(x-dx*3.4).toFixed(1)} ${(y-dy*3.4).toFixed(1)} Q ${kx} ${ky} ${(x+dx*3.4).toFixed(1)} ${(y+dy*3.4).toFixed(1)}"/>`;
+}
+/* barra con agarre dibujado en ambas manos (prono = palma abajo, supino = palma arriba) */
+function barHandsGrip(hL,hR,prone){
+  const ang = Math.atan2(hR[1]-hL[1], hR[0]-hL[0])*180/Math.PI;
+  return barHands(hL,hR) + gripHand(hL[0],hL[1],ang,prone) + gripHand(hR[0],hR[1],ang,prone);
+}
+/* discos en los extremos de una barra apoyada sobre los hombros (sentadilla) */
+function barDiscs(x1,y1,x2,y2){
+  return bb(x1,y1,x2,y2,15,.08)
+    + `<circle class="eqc" cx="${x1}" cy="${y1}" r="6.2"/><circle class="eqc" cx="${x2}" cy="${y2}" r="6.2"/>`;
+}
+
+/* --- vista FRONTAL: el cuerpo mirando a cámara, simétrico, con pies/hombros a lo ancho --- */
+function frontBody(opts){
+  opts=opts||{};
+  const sy=opts.sy||32, hipY=opts.hipY||62, shW=opts.shW||22, hipW=opts.hipW||16;
+  const headR=7;
+  const sx1=50-shW/2, sx2=50+shW/2, hx1=50-hipW/2, hx2=50+hipW/2;
+  let svg = bhead(50, cl(sy-headR-2), headR);
+  svg += `<path class="body" d="M${sx1} ${sy}L${hx1} ${hipY}" stroke-width="14"/>`;
+  svg += `<path class="body" d="M${sx2} ${sy}L${hx2} ${hipY}" stroke-width="14"/>`;
+  svg += bhip(50,hipY,hipW+6,9);
+  return {svg, sh:[sx1,sx2,sy], hip:[hx1,hx2,hipY]};
+}
+/* brazos frontales de 2 segmentos; ang 0 = brazo pegado al cuerpo colgando */
+function frontArm(sx,sy,outAng,elbowBend,upperL,foreL,gearFn,sign){
+  sign=sign||1;
+  const ex=sx + sign*Math.sin(outAng*Math.PI/180)*upperL;
+  const ey=sy + Math.cos(outAng*Math.PI/180)*upperL;
+  const hx=ex + sign*Math.sin((outAng+elbowBend)*Math.PI/180)*foreL;
+  const hy=ey + Math.cos((outAng+elbowBend)*Math.PI/180)*foreL;
+  const base=limb(sx,sy,ex,ey,6)+limb(ex,ey,hx,hy,6)+`<circle class="body" cx="${hx.toFixed(1)}" cy="${hy.toFixed(1)}" r="3"/>`;
+  const gear=gearFn?gearFn(hx,hy):'';
+  return {svg:base+gear, hand:[hx,hy]};
+}
+function frontLeg(hx,hy,outAng,kneeBend,thigh,shin,sign){
+  sign=sign||1;
+  const kx=hx + sign*Math.sin(outAng*Math.PI/180)*thigh;
+  const ky=hy + Math.cos(outAng*Math.PI/180)*thigh;
+  const fx=kx + sign*Math.sin((outAng+kneeBend)*Math.PI/180)*shin;
+  const fy=ky + Math.cos((outAng+kneeBend)*Math.PI/180)*shin;
+  return {svg:limb(hx,hy,kx,ky,8)+limb(kx,ky,fx,fy,8), foot:[fx,fy]};
+}
+const topHead=()=>bhead(50,22,6.5);
+
+/* ========================================================================
+   LOS 4 EJERCICIOS — cada uno con 3 vistas obligatorias: lateral, inicio, fin
+   (fases del movimiento) y una vista frontal opcional cuando aporta agarre real.
+   ======================================================================== */
+const EXOS = [
+
+/* a) Press de banca con barra — tumbado, agarre prono ancho */
+{
+  key:'bench_press',
+  name:'Press de banca con barra',
+  eq:'Barra recta · agarre prono ancho',
+  /* dibuja el cuerpo tumbado en el banco; armY controla la altura de las manos
+     (arriba = brazos extendidos / abajo = barra sobre el pecho) */
+  rig(armY){
+    const benchTop=64;
+    let s = fl(93)
+      + ln('frame',18,benchTop,80,benchTop)                      // tabla del banco
+      + ln('frame',26,benchTop,26,90)+ln('frame',72,benchTop,72,90); // patas
+    const sh=[40,benchTop-5], hp=[70,benchTop-5];                // tronco horizontal
+    s += bhead(sh[0]-11, sh[1], 6.5);                            // cabeza a la izquierda
+    s += btorso(sh[0],sh[1],hp[0],hp[1],14);
+    s += bhip(hp[0],hp[1]+0,16,9);
+    // piernas: muslo hacia la derecha, rodilla flexionada bajando al suelo
+    const kx=hp[0]+10, ky=hp[1]+8, fx=kx+2, fy=90;
+    s += limb(hp[0],hp[1],kx,ky,8)+limb(kx,ky,fx,fy,8);
+    // brazos verticales desde el hombro hasta la barra, a la altura armY
+    const hL=[sh[0]-2,armY], hR=[sh[0]+2,armY];
+    const eL=[sh[0]-1,(sh[1]+armY)/2], eR=[sh[0]+1,(sh[1]+armY)/2];
+    s += limb(sh[0],sh[1],eL[0],eL[1],6)+limb(eL[0],eL[1],hL[0],hL[1],6);
+    s += limb(sh[0],sh[1],eR[0],eR[1],6)+limb(eR[0],eR[1],hR[0],hR[1],6);
+    s += barHandsGrip(hL,hR,true);
+    return s;
+  },
+  lateral(){ return this.rig(38); },      // posición intermedia típica del thumbnail/lateral
+  inicio(){ return this.rig(38); },       // brazos extendidos, barra arriba
+  fin(){ return this.rig(58); },          // barra abajo, casi tocando el pecho
+  frontal(){
+    // tumbado visto desde la cabecera: hombros/cadera en horizontal, brazos arriba sosteniendo la barra ancha
+    const sy=70, hipY=40;
+    let s = `<ellipse class="body" cx="50" cy="${hipY}" rx="9" ry="15"/>`; // tronco en escorzo
+    s += bhead(50, 86, 7);
+    const hL=[50-34,sy-4], hR=[50+34,sy-4];
+    s += limb(50-11,sy,hL[0],hL[1],6)+limb(50+11,sy,hR[0],hR[1],6);
+    s += `<circle class="body" cx="${hL[0]}" cy="${hL[1]}" r="3"/><circle class="body" cx="${hR[0]}" cy="${hR[1]}" r="3"/>`;
+    s += barHandsGrip(hL,hR,true);
+    return s;
+  },
+  note:'Lateral: tronco tumbado en el banco, brazos verticales. Inicio: brazos extendidos con la barra arriba. Fin: barra bajada hasta tocar el pecho. Frontal (desde la cabecera): las dos manos agarran la barra ancha en prono, mostrando la anchura real del agarre.'
+},
+
+/* b) Sentadilla con barra — barra roja sobre los hombros, flexión de rodilla y cadera */
+{
+  key:'squat_bar',
+  name:'Sentadilla con barra',
+  eq:'Barra con discos · apoyo en trapecio',
+  /* knee: 0 = de pie recto, 1 = flexión profunda (fase baja) */
+  rig(knee){
+    let s = fl(90);
+    // Perfil mirando a la derecha. De pie: todo vertical y alto.
+    // En flexión: la CADERA baja y retrocede, el MUSLO se horizontaliza,
+    // la espinilla queda casi vertical y el torso se inclina al frente.
+    const hipX = 46 - 4*knee;           // la cadera retrocede un poco
+    const hipY = 46 + 20*knee;          // y baja mucho (fase profunda)
+    const shX  = hipX + 2 + 9*knee;     // el torso se inclina hacia delante
+    const shY  = hipY - 24 + 6*knee;    // hombro siempre por encima de la cadera
+    const kneeX = 54 + 8*knee;          // rodilla muy adelantada en la flexión
+    const kneeY = 60 + 6*knee;
+    const footX = 52;                   // pie fijo en el suelo
+    const footY = 90;
+    // pierna (perfil; las dos se solapan)
+    s += limb(hipX,hipY,kneeX,kneeY,9)+limb(kneeX,kneeY,footX,footY,9);
+    s += bhip(hipX,hipY,16,9);
+    s += btorso(shX,shY,hipX,hipY,15);
+    const headX = shX + 3*knee, headY = shY - 10;
+    s += bhead(headX, headY, 6.5);
+    // Barra apoyada SOBRE los trapecios (justo detrás del cuello, a la altura del hombro).
+    // Brazos cortos que suben del hombro para sujetarla => lectura de "barra sobre la espalda".
+    const barY = shY - 1;
+    const barX = shX - 2;
+    s += limb(shX,shY+1, barX-1, barY+1, 6);
+    s += limb(shX+2,shY+1, barX+3, barY+1, 6);
+    s += barDiscs(barX-15, barY, barX+15, barY);
+    return s;
+  },
+  lateral(){ return this.rig(.72); },     // flexión bien visible para el thumbnail
+  inicio(){ return this.rig(0); },        // de pie, piernas extendidas
+  fin(){ return this.rig(1); },           // flexión profunda completa
+  frontal(){
+    // De frente, barra con discos apoyada sobre los trapecios (a la altura del hombro),
+    // manos agarrándola por encima de los hombros; pies y hombros a la misma anchura.
+    const f=frontBody({sy:34,hipY:62,shW:24,hipW:18});
+    let s=f.svg;
+    const barY = f.sh[2]-3;
+    // manos justo por fuera de los hombros, codos hacia arriba
+    const aL=frontArm(f.sh[0],f.sh[2],-20,-120,12,8,null,1);
+    const aR=frontArm(f.sh[1],f.sh[2],-20,120,12,8,null,-1);
+    s+=aL.svg+aR.svg;
+    s+=barDiscs(f.sh[0]-15, barY, f.sh[1]+15, barY);
+    const lL=frontLeg(f.hip[0],f.hip[1],14,0,16,15,-1);
+    const lR=frontLeg(f.hip[1],f.hip[1],14,0,16,15,1);
+    s+=lL.svg+lR.svg;
+    return s;
+  },
+  note:'Lateral: fase baja con cadera y rodillas muy flexionadas, barra con discos sobre los trapecios. Inicio: de pie con las piernas extendidas. Fin: flexión profunda de rodilla y cadera, torso inclinado al frente. Frontal: hombros y pies a la misma anchura, barra con discos apoyada sobre la nuca.'
+},
+
+/* c) Curl de bíceps con barra — de pie, agarre supino, flexión de codo */
+{
+  key:'curl_bar',
+  name:'Curl de bíceps con barra',
+  eq:'Barra recta · agarre supino',
+  /* elbow: 0 = brazo extendido (barra junto a los muslos), 1 = codo muy flexionado (barra al pecho) */
+  rig(elbow){
+    let s = fl(93);
+    const sh=[48,30], hp=[50,56];
+    // piernas de pie, quietas, ligeramente separadas (perfil)
+    s += limb(hp[0]-2,hp[1],hp[0]-3,72,8)+limb(hp[0]-3,72,hp[0]-5,90,8);
+    s += limb(hp[0]+2,hp[1],hp[0]+3,72,8)+limb(hp[0]+3,72,hp[0]+2,90,8);
+    s += bhip(hp[0],hp[1],16,9);
+    s += btorso(sh[0],sh[1],hp[0],hp[1],15);
+    s += bhead(sh[0], sh[1]-9, 6.5);
+    // el CODO permanece siempre fijo y pegado al costado (sello del curl):
+    // solo gira el antebrazo, desde colgando recto hasta subido al pecho
+    const el=[sh[0]+1,sh[1]+15];
+    const hand=[el[0]+6*(1-elbow)+2*elbow, el[1]+16*(1-elbow)-13*elbow];
+    s += limb(sh[0],sh[1]+1,el[0],el[1],6)+limb(el[0],el[1],hand[0],hand[1],6);
+    s += barHandsGrip([hand[0]-5,hand[1]],[hand[0]+5,hand[1]],false);
+    return s;
+  },
+  lateral(){ return this.rig(.6); },      // codo ya claramente flexionado, barra a media subida
+  inicio(){ return this.rig(0); },        // brazo extendido, barra junto a los muslos
+  fin(){ return this.rig(1); },           // codo muy flexionado, barra arriba cerca del pecho
+  frontal(){
+    const f=frontBody({sy:30,hipY:58,shW:20,hipW:14});
+    let s=f.svg;
+    // piernas primero (quedan detrás)
+    const lL=frontLeg(f.hip[0],f.hip[1],4,0,17,16,-1);
+    const lR=frontLeg(f.hip[1],f.hip[1],4,0,17,16,1);
+    s+=lL.svg+lR.svg;
+    // brazos: brazo casi vertical pegado al cuerpo; antebrazo CURLADO hacia arriba
+    const aL=frontArm(f.sh[0],f.sh[1],10,-162,13,12,null,-1);
+    const aR=frontArm(f.sh[1],f.sh[1],10,162,13,12,null,1);
+    s+=aL.svg+aR.svg;
+    s+=barHandsGrip([aL.hand[0],aL.hand[1]],[aR.hand[0],aR.hand[1]],false);
+    return s;
+  },
+  note:'Lateral: codo fijo y pegado al costado, antebrazo a media subida con la barra en el centro del recorrido. Inicio: brazo extendido con la barra junto a los muslos. Fin: codo muy flexionado, barra arriba cerca del pecho. Frontal: agarre supino (palmas hacia arriba) con las manos a la anchura de los hombros.'
+},
+
+/* d) Dominadas / jalón al pecho — colgado de barra roja, agarre prono ancho */
+{
+  key:'pullup',
+  name:'Dominadas (jalón al pecho)',
+  eq:'Barra fija · agarre prono ancho',
+  /* pull: 0 = colgado con los brazos extendidos, 1 = barbilla a la altura de la barra */
+  rig(pull){
+    const barY=14;
+    let s = ln('eq',12,barY,88,barY)+ln('frame',18,barY,18,7)+ln('frame',82,barY,82,7);
+    // el cuerpo entero sube hacia la barra a medida que pull crece
+    const bodyY = 42 - 22*pull;
+    const sh=[50,bodyY], hp=[50,bodyY+24];
+    const hL=[46,barY+2], hR=[54,barY+2];
+    s += limb(sh[0]-3,sh[1],hL[0],(sh[1]+hL[1])/2,6)+limb(hL[0],(sh[1]+hL[1])/2,hL[0],hL[1],6);
+    s += limb(sh[0]+3,sh[1],hR[0],(sh[1]+hR[1])/2,6)+limb(hR[0],(sh[1]+hR[1])/2,hR[0],hR[1],6);
+    s += gripHand(hL[0],hL[1],0,true)+gripHand(hR[0],hR[1],0,true);
+    // tronco + cabeza + cadera
+    s += bhead(sh[0], sh[1]-9, 6.5);
+    s += btorso(sh[0],sh[1],hp[0],hp[1],14);
+    s += bhip(hp[0],hp[1],16,9);
+    // piernas colgando, cruzadas, ligeramente dobladas hacia atrás
+    const kx=hp[0]+4, ky=hp[1]+15, fx=hp[0]+8, fy=hp[1]+26;
+    s += limb(hp[0]-4,hp[1],kx-2,ky,8)+limb(kx-2,ky,fx-2,fy,8);
+    s += limb(hp[0]+4,hp[1],kx+2,ky,8)+limb(kx+2,ky,fx+2,fy,8);
+    return s;
+  },
+  lateral(){ return this.rig(0); },       // colgado, brazos extendidos: la pose más reconocible
+  inicio(){ return this.rig(0); },        // colgado con los brazos extendidos
+  fin(){ return this.rig(1); },           // barbilla a la altura de la barra
+  frontal(){
+    const barY=16;
+    let s = ln('eq',10,barY,90,barY)+ln('frame',14,barY,14,8)+ln('frame',86,barY,86,8);
+    const hL=[22,barY+2], hR=[78,barY+2];
+    s += gripHand(hL[0],hL[1],0,true)+gripHand(hR[0],hR[1],0,true);
+    const f=frontBody({sy:32,hipY:64,shW:20,hipW:14});
+    s += limb(hL[0],hL[1],f.sh[0],f.sh[2],6)+limb(hR[0],hR[1],f.sh[1],f.sh[2],6);
+    s += f.svg;
+    const lL=frontLeg(f.hip[0],f.hip[1],6,0,17,16,-1);
+    const lR=frontLeg(f.hip[1],f.hip[1],-6,0,17,16,1);
+    s += lL.svg+lR.svg;
+    return s;
+  },
+  note:'Lateral: cuerpo colgando en vertical justo bajo la barra, brazos extendidos por encima de la cabeza, piernas colgando y cruzadas. Inicio: brazos totalmente extendidos. Fin: el cuerpo sube hasta llevar la barbilla a la altura de la barra. Frontal: agarre prono ancho, manos claramente más separadas que los hombros.'
+}
+];
+
+/* ============================= helpers de SVG wrapping ============================= */
+function svgWrap(innerSvg, cls){
+  return `<svg class="${cls}" viewBox="0 0 100 100" aria-hidden="true">${innerSvg}</svg>`;
+}
+
+/* ============================= construcción de la página ============================= */
+const grid = document.getElementById('grid');
+EXOS.forEach((ex, idx)=>{
+  const card = document.createElement('button');
+  card.type = 'button';
+  card.className = 'card';
+  card.setAttribute('aria-label', `Ver vistas de ${ex.name}`);
+  card.innerHTML = `
+    <div class="thumb">${svgWrap(ex.lateral(), 'icon')}</div>
+    <div class="cardname">${ex.name}</div>
+  `;
+  card.addEventListener('click', ()=>openExo(idx));
+  grid.appendChild(card);
+});
+
+const dExo = document.getElementById('dExo');
+function openExo(idx){
+  const ex = EXOS[idx];
+  document.getElementById('exoName').textContent = ex.name;
+  document.getElementById('exoEq').textContent = ex.eq;
+  const hasFrontal = typeof ex.frontal === 'function';
+  const n = hasFrontal ? 4 : 3;
+  document.getElementById('exoViews').style.setProperty('--n', n);
+  let html = `
+    <div class="viewBox">
+      <div class="viewFrame">${svgWrap(ex.lateral(), 'icon big')}</div>
+      <div class="viewLabel">Lateral</div>
+    </div>
+    <div class="viewBox">
+      <div class="viewFrame phase" data-tag="1">${svgWrap(ex.inicio(), 'icon big')}</div>
+      <div class="viewLabel">Inicio</div>
+    </div>
+    <div class="viewBox">
+      <div class="viewFrame phase" data-tag="2">${svgWrap(ex.fin(), 'icon big')}</div>
+      <div class="viewLabel">Fin</div>
+    </div>
+  `;
+  if(hasFrontal){
+    html += `
+    <div class="viewBox">
+      <div class="viewFrame">${svgWrap(ex.frontal(), 'icon big')}</div>
+      <div class="viewLabel">Frontal</div>
+    </div>
+    `;
+  }
+  document.getElementById('exoViews').innerHTML = html;
+  document.getElementById('exoLegend').textContent = ex.note;
+  dExo.showModal();
+}
+document.getElementById('exoClose').addEventListener('click', ()=>dExo.close());
+dExo.addEventListener('click', (e)=>{ if(e.target===dExo) dExo.close(); });
+
+/* abre una ficha directamente vía ?open=<indice> — solo para verificación visual */
+(function(){
+  const m = /open=(\d+)/.exec(location.search);
+  if(m) openExo(Math.min(EXOS.length-1, +m[1]));
+})();
+</script>
+</body>
+</html>

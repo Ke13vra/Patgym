@@ -197,6 +197,7 @@
   .catcard span{padding:9px 10px; font-size:12.5px; font-weight:700; line-height:1.25}
   .catcard .thumb{width:100%; height:auto; aspect-ratio:1/1; flex:none; border-radius:0; background:var(--card2); padding:6px; box-sizing:border-box}
   .catcard .icon{width:100%; height:100%}
+  .catcard.on{border-color:var(--or); box-shadow:inset 0 0 0 2px var(--or)}
   .mini{font-size:11.5px; color:var(--tx3); margin-top:7px; line-height:1.4}
   details.block{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:11px 13px; margin:4px 0 12px}
   details.block summary{font-weight:700; cursor:pointer; font-size:14.5px}
@@ -450,8 +451,25 @@
 <!-- entreno extra en día sin plan -->
 <dialog id="dExtra"><div class="dlg">
   <h2>¿Qué quieres entrenar hoy?</h2>
-  <p class="mini">Elige una sesión del plan. Sus series contarán igual que si fuera su día normal.</p>
-  <div id="extraList" class="wholist"></div>
+  <div class="chips" id="extraModeChips" role="tablist">
+    <button type="button" class="chip" id="emPlan" data-em="plan" aria-pressed="true">Sesión del plan</button>
+    <button type="button" class="chip" id="emLibre" data-em="libre" aria-pressed="false">Ejercicios sueltos</button>
+  </div>
+
+  <div id="extraPanePlan">
+    <p class="mini">Elige una sesión del plan. Sus series contarán igual que si fuera su día normal.</p>
+    <div id="extraList" class="wholist"></div>
+  </div>
+
+  <div id="extraPaneLibre" class="hide">
+    <p class="mini">Arma tu sesión: busca ejercicios del catálogo y añádelos. Cada uno se registra con series de peso y repeticiones.</p>
+    <input class="f" type="search" id="libreQ" placeholder="Buscar ejercicio…" inputmode="search">
+    <div class="chips" id="libreChips"></div>
+    <div id="libreSel" class="wholist" aria-label="Ejercicios elegidos"></div>
+    <div class="catgrid" id="libreGrid"></div>
+    <button type="button" class="btn pri" id="libreStart" disabled>Empezar (<span id="libreCount">0</span>)</button>
+  </div>
+
   <div class="row" style="margin-top:12px">
     <button type="button" class="btn" id="extraCancel">Cancelar</button>
   </div>
@@ -1816,6 +1834,25 @@ function archetypeOf(w){
    y "Flexiones hindú" (id:1080, group shoulders) caen en press_horizontal por has('flexion','flexiones')
    antes de llegar a su propio grupo. Limitación conocida y aceptada; backlog: &&w.group==='chest' en esa regla. */
 
+/* mapa arquetipo → músculos aprox. (claves MUS), para volumen de ejercicios sueltos (EEL) */
+const ARCH_MU = {
+  press_horizontal:{pecho:1,triceps:.4,hombro:.3}, press_inclinado:{pecho:1,triceps:.4,hombro:.3},
+  apertura_pecho:{pecho:1}, fondos:{pecho:1,triceps:.5,hombro:.3},
+  remo_horizontal:{espalda:1,biceps:.4}, remo_maquina:{espalda:1,biceps:.4},
+  dominada_jalon:{espalda:1,biceps:.4}, jalon_brazo_recto:{espalda:1},
+  peso_muerto:{espalda:.6,femoral:.7,gluteo:.7}, curl_biceps:{biceps:1}, curl_banco_scott:{biceps:1},
+  extension_triceps:{triceps:1}, press_hombro:{hombro:1,triceps:.4},
+  elevacion_lateral:{hombro:1}, elevacion_posterior:{hombro:1}, encogimiento:{trapecio:1},
+  sentadilla:{cuadriceps:1,gluteo:.5}, prensa_piernas:{cuadriceps:1,gluteo:.5},
+  curl_femoral:{femoral:1}, extension_cuadriceps:{cuadriceps:1}, zancada:{cuadriceps:1,gluteo:.7},
+  abdomen_tronco:{core:1}, generic:{}
+};
+function libreMode(w){ return w.group==='abs' ? 'abs' : 'gym'; }
+function libreItem(w){
+  const arch = archetypeOf(w);
+  return { wid:w.id, n:w.nameEs, m:libreMode(w), s:4, arch, group:w.group, mu:(ARCH_MU[arch]||{}) };
+}
+
 /* copia los campos de dibujo de ICV[key] pero fija un note propio del arquetipo
    (nunca el note del ejercicio de plan de origen). */
 const fromICV = (key, note) => ({lateral: ICV[key].lateral, inicio: ICV[key].inicio, fin: ICV[key].fin, frontal: ICV[key].frontal, note});
@@ -2021,7 +2058,7 @@ let DB={v:2,profile:{sex:'h',age:null,height:null,cycleStart:'',surplus:450},
 let mode='gym', day=todayK(), view='hoy', calM=null, proEx=null;
 /* estado del modo entrenamiento guiado */
 let guidedOpen=false, gIdx=0, gRest=false, gTick=null, gRestTick=null, gRestEnd=0, gDoneSet=new Set(),
-    gMode='gym', gKey=todayK();
+    gMode='gym', gKey=todayK(), gExtraRef=null;
 /* estado de la vista activa en #dExo (vistas Lateral/Inicio/Fin/Frontal/Músculos) */
 let exoActiveView='lateral', exoViews=null, exoMu=null, exoAllowMus=false;
 
@@ -2244,7 +2281,19 @@ function cardioArr(L){ return (L&&Array.isArray(L.cardio))?L.cardio:[]; }
 function validExtra(L){
   const x=L&&L.extra;
   if(!x) return null;
-  if((x.mode==='gym'||x.mode==='abs') && plan()[x.mode].some(d=>d.k===x.origK)) return x;
+  // retrocompat: marcador antiguo sin kind == plan
+  const kind = x.kind || 'plan';
+  if(kind==='plan'){
+    if((x.mode==='gym'||x.mode==='abs') && plan()[x.mode].some(d=>d.k===x.origK))
+      return {kind:'plan', mode:x.mode, origK:x.origK};
+  } else if(kind==='libre'){
+    // validar la FORMA de cada item, no solo que el array no esté vacío:
+    // un item debe tener n (nombre no vacío) y m en {'gym','abs'} para producir una clave exK válida.
+    const items = Array.isArray(x.items)
+      ? x.items.filter(it => it && typeof it.n==='string' && it.n && (it.m==='gym' || it.m==='abs'))
+      : [];
+    if(items.length) return {kind:'libre', items};
+  }
   delete L.extra; save();
   return null;
 }
@@ -2323,8 +2372,15 @@ function volWeek(d){
     let anySet=false;
     Object.keys(L.ex).forEach(k=>{
       const [m,dk,...rest]=k.split('|'), nme=rest.join('|');
-      const D=dayObj(m==='abs'?'abs':'gym',dk);
-      const ex=(D.e||[]).find(x=>x.n===nme);
+      let ex;
+      if(dk==='libre'){
+        const ve=validExtra(L);                                   // mismo saneamiento que el resto de consumidores
+        const it=((ve&&ve.kind==='libre'&&ve.items)||[]).find(x=>x.n===nme);
+        ex = it ? {m:it.mu} : null;              // volWeek solo mira ex.m
+      }else{
+        const D=dayObj(m==='abs'?'abs':'gym',dk);
+        ex=(D.e||[]).find(x=>x.n===nme);
+      }
       const done=(L.ex[k]||[]).filter(s=>s&&(nm(s.kg)||nm(s.reps))).length;
       if(!done) return;
       anySet=true; series+=done;
@@ -2490,6 +2546,31 @@ function barsChart(items,opt){
 }
 
 /* ============================== vista HOY =============================== */
+const exKOf=(m,k,e)=> e.k || exK(m,k,e.n);
+function exThumbHtml(ex, cls='icon'){
+  if(ex.wid!=null){                 // suelto: pictograma por arquetipo (vista lateral del catálogo)
+    const w=WGER_BY_ID[ex.wid];
+    const svg = w ? (ICV_CAT[archetypeOf(w)]?.lateral?.() || IC.generic) : IC.generic;
+    return `<svg class="${cls}" viewBox="0 0 100 100" aria-hidden="true">${svg}</svg>`;
+  }
+  return thumbHtml(ex.i, cls);      // plan: pictograma por clave IC
+}
+function libreDayView(extra){
+  return {
+    k:'libre', d:'ENTRENO LIBRE', f:'Ejercicios sueltos', c:'#64748b',
+    n:'Sesión a la carta. Cada ejercicio cuenta en tu evolución.',
+    e: extra.items.map(it=>({
+      n: it.n, s: it.s, r:'', i:null, t:'', rest:90, o:'',
+      m: it.mu,                       // mapa de músculos para acentos/ficha
+      wid: it.wid, arch: it.arch,     // para el thumb desde el catálogo
+      k: exK(it.m, 'libre', it.n)     // clave real de registro
+    }))
+  };
+}
+function guidedList(gExtra){
+  if(gExtra && gExtra.kind==='libre') return libreDayView(gExtra).e;
+  return dayObj(gMode,gKey).e;
+}
 function vHoy(){
   const esHoy=(day===todayK());
   const D=dayObj(mode,day), c=cyc(), f=fase();   // D = día que se MUESTRA (consulta o hoy), en la PESTAÑA ACTIVA
@@ -2500,11 +2581,15 @@ function vHoy(){
   // No borra L.extra: solo deja de pintarlo en ESTE render si coexiste con contenido real de la pestaña activa.
   const extraRaw = esHoy ? validExtra(L) : null;
   const extra = (extraRaw && D.e.length===0) ? extraRaw : null;
-  const EX = extra ? dayObj(extra.mode, extra.origK) : null;
-  const activeE = extra ? EX.e : D.e;
-  const activeKeyMode = extra ? extra.mode : mode;
-  const activeKeyDay = extra ? extra.origK : todayK();
-  const headD = extra ? EX : D;   // día cuyos d/f/c se muestran en cabecera y acentos de color
+
+  let EX=null, activeE=D.e, activeKeyMode=mode, activeKeyDay=todayK(), headD=D;
+  if(extra && extra.kind==='plan'){
+    EX = dayObj(extra.mode, extra.origK);
+    activeE=EX.e; activeKeyMode=extra.mode; activeKeyDay=extra.origK; headD=EX;
+  }else if(extra && extra.kind==='libre'){
+    EX = libreDayView(extra);           // día sintético
+    activeE=EX.e; activeKeyMode='mix'; activeKeyDay='libre'; headD=EX;
+  }
 
   let h=`<div class="dayhead" style="background:${dayCol(headD.c)}"><h1>${esc(headD.d)}</h1>
     <p>${esc(headD.f)}${f?' · '+f.rir:''}</p></div>`;
@@ -2542,7 +2627,7 @@ function vHoy(){
   if(activeE.length){
     const tot=activeE.reduce((a,e)=>a+e.s,0);
     let done=0, ton=0;
-    activeE.forEach(e=>{const s=(L.ex||{})[exK(activeKeyMode,activeKeyDay,e.n)]||[];
+    activeE.forEach(e=>{const s=(L.ex||{})[exKOf(activeKeyMode,activeKeyDay,e)]||[];
       s.forEach(x=>{if(x&&nm(x.kg)&&nm(x.reps)){done++;ton+=nm(x.kg)*nm(x.reps);}});});
     const el=sessElapsed();
     const paused=!!L.pauseAt;
@@ -2569,12 +2654,12 @@ function vHoy(){
     if(!extra) h+=`<button type="button" id="bExtraStart" class="bigcta">+ Añadir entreno extra</button>`;
   }else{
     activeE.forEach((ex,ix)=>{
-      const k=exK(activeKeyMode,activeKeyDay,ex.n), last=lastOf(k), sg=sugg(ex,k), st=stalled(k), pr=DB.prs[k];
+      const k=exKOf(activeKeyMode,activeKeyDay,ex), last=lastOf(k), sg=sugg(ex,k), st=stalled(k), pr=DB.prs[k];
       const cur=((L.ex||{})[k])||[];
       const isPR=cur.some(s=>{if(!s)return false;const b=e1rm(nm(s.kg),nm(s.reps));return pr&&b>pr.e*1.001;});
       h+=`<section class="ex${isPR?' pr':''}">
         <div class="exhead">
-          <div class="thumb" role="button" tabindex="0" style="cursor:pointer" data-ic="${esc(ex.i||'generic')}" data-n="${esc(ex.n)}" data-s="${ex.s}" data-r="${esc(ex.r)}" data-t="${esc(ex.t||'')}" data-o="${esc(ex.o||'')}" data-m="${esc(JSON.stringify(ex.m||{}))}">${thumbHtml(ex.i,'icon')}</div>
+          <div class="thumb" role="button" tabindex="0" style="cursor:pointer" data-ic="${esc(ex.i||'generic')}" data-n="${esc(ex.n)}" data-s="${ex.s}" data-r="${esc(ex.r)}" data-t="${esc(ex.t||'')}" data-o="${esc(ex.o||'')}" data-m="${esc(JSON.stringify(ex.m||{}))}"${ex.wid!=null?` data-wid="${ex.wid}"`:''}>${exThumbHtml(ex)}</div>
           <div class="exmeta">
             <div class="exname">${ix+1}. ${esc(ex.n)}</div>
             <div class="extarget" style="color:${dayCol(headD.c)}">${ex.s} × ${esc(ex.r)}
@@ -2613,7 +2698,7 @@ function vHoy(){
       <div class="mini">Usa <b>Finalizar</b> arriba para cerrar la sesión de hoy cuando termines.</div></div>`;
   }
   h+=`<details class="block"><summary>Reglas que no se saltan</summary><ul>${
-    REGLAS[activeKeyMode].map(r=>`<li>${esc(r)}</li>`).join('')}</ul></details>`;
+    (REGLAS[activeKeyMode]||[]).map(r=>`<li>${esc(r)}</li>`).join('')}</ul></details>`;
   return h;
 }
 function sessElapsed(){
@@ -2631,15 +2716,22 @@ function finSession(){
   const extraRaw=validExtra(L);
   const Dact=dayObj(mode,todayK());
   const gExtra=(extraRaw && Dact.e.length===0) ? extraRaw : null;
-  const finishedMode = gExtra ? gExtra.mode : mode;
-  L.gym = finishedMode==='gym'||L.gym;
-  L.abs = finishedMode==='abs'||L.abs;
+  if(gExtra && gExtra.kind==='libre'){
+    if(gExtra.items.some(it=>it.m==='gym')) L.gym=true;
+    if(gExtra.items.some(it=>it.m==='abs')) L.abs=true;
+  }else{
+    const finishedMode = gExtra ? gExtra.mode : mode;
+    L.gym = finishedMode==='gym'||L.gym;
+    L.abs = finishedMode==='abs'||L.abs;
+  }
   save();
   const mins=sessElapsed()||0;   // L.end ya fijado → valor estable
   closeGuided();                 // no-op si el overlay está cerrado
   render();
   toast('Sesión cerrada. '+mins+' min');
 }
+let libreQ='', libreGroup='', libreSel=[];   // estado del panel sueltos (module-level, junto a catQ/catGroup)
+
 function openExtraPicker(){
   let h='';
   ['gym','abs'].forEach(m=>{
@@ -2652,12 +2744,58 @@ function openExtraPicker(){
   });
   if(!h) h='<div class="mini">No hay sesiones en el plan activo.</div>';
   $('#extraList').innerHTML=h;
+  // reset panel sueltos
+  libreQ=''; libreGroup=''; libreSel=[];
+  setExtraMode('plan');
+  renderLibrePicker();
   $('#dExtra').showModal();
+}
+function setExtraMode(em){
+  $('#emPlan').setAttribute('aria-pressed', String(em==='plan'));
+  $('#emLibre').setAttribute('aria-pressed', String(em==='libre'));
+  $('#extraPanePlan').classList.toggle('hide', em!=='plan');
+  $('#extraPaneLibre').classList.toggle('hide', em!=='libre');
+}
+function renderLibrePicker(){
+  // chips de grupo (mismo patrón que vCat)
+  $('#libreChips').innerHTML =
+    `<button type="button" class="chip" data-lg="" aria-pressed="${libreGroup===''}">Todos</button>`+
+    WGER_GROUPS.map(([g,l])=>`<button type="button" class="chip" data-lg="${g}" aria-pressed="${libreGroup===g}">${l}</button>`).join('');
+  // lista de elegidos
+  $('#libreSel').innerHTML = libreSel.length
+    ? libreSel.map((it,i)=>`<div class="whoitem">
+         <button type="button" class="whopick" disabled><span class="whoname">${esc(it.n)}
+           <div class="mini" style="margin:2px 0 0">${it.s} series · ${it.m==='abs'?'Abdomen':'Gimnasio'}</div></span></button>
+         <button type="button" class="whodel" data-ldel="${i}" aria-label="Quitar">✕</button></div>`).join('')
+    : `<div class="mini">Aún no has añadido ejercicios.</div>`;
+  // rejilla del catálogo filtrada
+  const q=libreQ.trim().toLowerCase();
+  const list=WGER.filter(w=>(!libreGroup||w.group===libreGroup)&&(!q||w.nameEs.toLowerCase().includes(q)));
+  const chosen=new Set(libreSel.map(it=>it.wid));
+  $('#libreGrid').innerHTML = list.length
+    ? list.map(w=>
+        `<button type="button" class="catcard${chosen.has(w.id)?' on':''}" data-ladd="${w.id}" aria-pressed="${chosen.has(w.id)}">
+           <div class="thumb">${catThumbHtml(w)}</div>
+           <span>${esc(w.nameEs)}</span>
+         </button>`).join('')
+    : `<div class="mini">Sin resultados. Prueba otro término o quita el filtro de grupo.</div>`;
+  // botón empezar
+  const b=$('#libreStart'); b.disabled=!libreSel.length; $('#libreCount').textContent=libreSel.length;
+}
+function startExtraLibre(){
+  if(!libreSel.length){ toast('Añade al menos un ejercicio'); return; }
+  const L=dlog(TODAY());
+  if(L.extra){ toast('Ya tienes un entreno extra en marcha hoy'); $('#dExtra').close(); return; }
+  L.extra={ kind:'libre', items: libreSel.map(it=>({...it})) };
+  if(!L.start) L.start=Date.now();
+  save();
+  $('#dExtra').close();
+  render();
 }
 function startExtra(m,k){
   const L=dlog(TODAY());
   if(L.extra){ toast('Ya tienes un entreno extra en marcha hoy'); $('#dExtra').close(); return; }
-  L.extra={mode:m, origK:k};
+  L.extra={kind:'plan', mode:m, origK:k};
   if(!L.start) L.start=Date.now();
   save();
   $('#dExtra').close();
@@ -2678,16 +2816,17 @@ function openGuided(resume){
   const extraRaw = validExtra(L0);
   const Dact = dayObj(mode, todayK());
   const gExtra = (extraRaw && Dact.e.length===0) ? extraRaw : null;
-  gMode = gExtra ? gExtra.mode : mode;
-  gKey = gExtra ? gExtra.origK : todayK();
-  const E=dayObj(gMode,gKey).e;
+  gExtraRef = gExtra;                                      // guardar para el resto del guiado
+  if(gExtra && gExtra.kind==='libre'){ gMode='mix'; gKey='libre'; }   // rama libre: no hay gExtra.mode/origK
+  else { gMode = gExtra ? gExtra.mode : mode; gKey = gExtra ? gExtra.origK : todayK(); }
+  const E=guidedList(gExtra);                              // lista real (plan o libre), no dayObj directo
   if(!E.length){ toast('Hoy es descanso'); return; }
   const L=L0;
   if(!L.start){ L.start=Date.now(); save(); }
   gIdx = resume ? Math.min(gIdx, E.length-1) : 0;
   gRest=false;
   gDoneSet=new Set();
-  E.forEach(ex=>{ const k=exK(gMode,gKey,ex.n); const arr=(L.ex||{})[k]||[];
+  E.forEach(ex=>{ const k=ex.k || exK(gMode,gKey,ex.n); const arr=(L.ex||{})[k]||[];   // ex.k para sueltos
     arr.forEach((v,s)=>{ if(v&&nm(v.kg)!=null&&nm(v.reps)!=null) gDoneSet.add(k+'|'+s); }); });
   guidedOpen=true;
   $('#guided').classList.remove('hide');
@@ -2719,7 +2858,7 @@ function tickGuidedClock(){
 }
 function paintGuidedHeader(){
   const L=DB.log[TODAY()]||{};
-  const M=dayObj(gMode,gKey).e.length;
+  const M=guidedList(gExtraRef).length;
   tickGuidedClock();
   const pos=$('#gPos'); if(pos) pos.textContent=`Ejercicio ${Math.min(gIdx+1,M)} de ${M}`;
   const pb=$('#gPause'); if(pb) pb.textContent=L.pauseAt?'▶':'⏸';
@@ -2737,7 +2876,7 @@ function paintGuidedHeader(){
 function paintGuided(){
   const body=$('#gBody'); if(!body) return;
   if(gRest){
-    const E=dayObj(gMode,gKey).e, ex=E[gIdx]||{};
+    const E=guidedList(gExtraRef), ex=E[gIdx]||{};
     const left=Math.max(0,Math.ceil((gRestEnd-Date.now())/1000));
     body.innerHTML=`<div style="flex:1"></div>
       <div class="g-restname">Descanso</div>
@@ -2748,14 +2887,14 @@ function paintGuided(){
     paintGuidedHeader();
     return;
   }
-  const E=dayObj(gMode,gKey).e, ex=E[gIdx];
+  const E=guidedList(gExtraRef), ex=E[gIdx];
   if(!ex){ body.innerHTML=''; return; }
-  const k=exK(gMode,gKey,ex.n), last=lastOf(k), sg=sugg(ex,k), st=stalled(k);
+  const k=ex.k || exK(gMode,gKey,ex.n), last=lastOf(k), sg=sugg(ex,k), st=stalled(k);
   const L=DB.log[TODAY()]||{}, cur=((L.ex||{})[k])||[];
   let s=`<div class="g-exobig" role="button" tabindex="0" aria-label="Ampliar ejercicio"
       data-ic="${esc(ex.i||'generic')}" data-n="${esc(ex.n)}" data-s="${ex.s}"
-      data-r="${esc(ex.r)}" data-t="${esc(ex.t||'')}" data-o="${esc(ex.o||'')}" data-m="${esc(JSON.stringify(ex.m||{}))}">
-      ${thumbHtml(ex.i,'icon gbig')}</div>
+      data-r="${esc(ex.r)}" data-t="${esc(ex.t||'')}" data-o="${esc(ex.o||'')}" data-m="${esc(JSON.stringify(ex.m||{}))}"${ex.wid!=null?` data-wid="${ex.wid}"`:''}>
+      ${exThumbHtml(ex,'icon gbig')}</div>
     <div class="g-exname">${esc(ex.n)}</div>
     <div class="g-extarget">${ex.s} × ${esc(ex.r)}${ex.t?` <span class="tag">${esc(ex.t)}</span>`:''}${sg?` <span class="tag sug">${sg.why==='sube'?'↑ ':''}${sg.kg} kg</span>`:''}</div>`;
   if(last) s+=`<div class="g-exinfo">Última vez (${last.date.slice(8)}/${last.date.slice(5,7)}): <b>${
@@ -2778,7 +2917,7 @@ function paintGuided(){
   paintGuidedHeader();
 }
 function startGuidedRest(){
-  const E=dayObj(gMode,gKey).e, ex=E[gIdx]||{};
+  const E=guidedList(gExtraRef), ex=E[gIdx]||{};
   const sec=(ex.rest===0?0:(+ex.rest||90));
   if(sec<=0) return;
   gRest=true; gRestEnd=Date.now()+sec*1000;
@@ -2864,10 +3003,18 @@ function vCal(){
 
 /* ============================= vista PROGRESO =========================== */
 function allExNames(){
-  const out=[];
+  const out=[], seen=new Set();
   ['gym','abs'].forEach(m=>plan()[m].forEach(d=>d.e.forEach(e=>{
-    const k=exK(m,d.k,e.n); if(hist(k).length) out.push({k,n:e.n,m});
+    const k=exK(m,d.k,e.n); if(hist(k).length && !seen.has(k)){ seen.add(k); out.push({k,n:e.n,m}); }
   })));
+  // ejercicios sueltos con historial (clave *|libre|*)
+  Object.keys(DB.log).forEach(d=>{
+    const ex=DB.log[d].ex||{};
+    Object.keys(ex).forEach(k=>{
+      const p=k.split('|'); if(p[1]!=='libre' || seen.has(k)) return;
+      if(hist(k).length){ seen.add(k); out.push({k, n:p.slice(2).join('|'), m:p[0]}); }
+    });
+  });
   return out;
 }
 function vPro(){
@@ -3410,6 +3557,7 @@ document.addEventListener('input',e=>{
   if(t.id==='sRpe'){ const L=dlog(TODAY()); L.rpe=+t.value; $('#sRpeV').textContent=t.value+'/10'; save(); return; }
   if(t.id==='sNote'){ dlog(TODAY()).note=t.value; save(); return; }
   if(t.id==='catQ'){ catQ=t.value; render(); return; }
+  if(t.id==='libreQ'){ libreQ=t.value; renderLibrePicker(); return; }
 });
 /* descanso automático del guiado: el handler global YA persistió en DB; aquí solo
    decidimos descanso + marca visual, leyendo del DOM de la fila (fuente única). */
@@ -3445,6 +3593,7 @@ document.addEventListener('click',e=>{
   const rb=t.closest('.rest'); if(rb){ startTimer(+rb.dataset.rest||90); return; }
   const th=t.closest('.thumb[data-ic], .g-exobig[data-ic]'); if(th){
     const d=th.dataset;
+    if(d.wid!=null && d.wid!==''){ const w=WGER_BY_ID[+d.wid]; if(w) openExoFromCatalog(w); else toast('Este ejercicio ya no está disponible en el catálogo'); return; }
     const m=(()=>{ try{ return JSON.parse(d.m||'{}'); }catch(e){ return {}; } })();
     const mu=muscles(m);
     openExo(d.ic, d.n, d.s, d.r, d.t, d.o, mu);
@@ -3457,6 +3606,15 @@ document.addEventListener('click',e=>{
   if(t.id==='bCardioAdd'){ openCardio(TODAY()); return; }
   if(t.id==='extraCancel'){ $('#dExtra').close(); return; }
   const xp=t.closest('[data-xm]'); if(xp){ startExtra(xp.dataset.xm, xp.dataset.xk); return; }
+  const em=t.closest('[data-em]'); if(em){ setExtraMode(em.dataset.em); return; }
+  const lg=t.closest('.chip[data-lg]'); if(lg){ libreGroup=lg.dataset.lg; renderLibrePicker(); return; }
+  const la=t.closest('.catcard[data-ladd]'); if(la){
+    const id=+la.dataset.ladd, i=libreSel.findIndex(x=>x.wid===id);
+    if(i>=0) libreSel.splice(i,1); else libreSel.push(libreItem(WGER_BY_ID[id]));
+    renderLibrePicker(); return;
+  }
+  const ld=t.closest('[data-ldel]'); if(ld){ libreSel.splice(+ld.dataset.ldel,1); renderLibrePicker(); return; }
+  if(t.id==='libreStart'){ startExtraLibre(); return; }
   if(t.id==='bExtraCancelSession'){
     if(confirm('¿Cancelar el entreno extra de hoy? Las series ya registradas se mantienen en el historial.')){
       delete DB.log[TODAY()].extra; save(); render();
@@ -3468,7 +3626,7 @@ document.addEventListener('click',e=>{
   if(t.id==='gFin'){ finSession(); return; }
   if(t.id==='gSkip'){ clearInterval(gRestTick); gRestTick=null; gRest=false; paintGuided(); return; }
   if(t.id==='gPrev'){ gIdx=Math.max(0,gIdx-1); gRest=false; clearInterval(gRestTick); gRestTick=null; paintGuided(); paintGuidedHeader(); return; }
-  if(t.id==='gNext'){ const M=dayObj(gMode,gKey).e.length;
+  if(t.id==='gNext'){ const M=guidedList(gExtraRef).length;
     if(gIdx>=M-1){ finSession(); return; }
     gIdx++; gRest=false; clearInterval(gRestTick); gRestTick=null; paintGuided(); paintGuidedHeader(); return; }
   const cd=t.closest('.cd[data-d]'); if(cd){ openDay(cd.dataset.d); return; }
